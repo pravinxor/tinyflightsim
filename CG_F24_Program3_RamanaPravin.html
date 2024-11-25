@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+  <script src="./CG_F24_Program3_RamanaPravin.js"></script>
+
+  <script id="sun-vertex-shader" type="x-shader/x-vertex">
+  #version 300 es
+  precision mediump float;
+
+  in vec4 aPosition;
+  in vec3 aColor;
+  out vec3 vColor;
+
+  uniform mat4 modelView;
+  uniform mat4 projection;
+
+  void main() {
+    gl_Position = projection * modelView * aPosition;
+    vColor = aColor;
+  }
+  </script>
+
+  <script id="sun-fragment-shader" type="x-shader/x-fragment">
+  #version 300 es
+  precision mediump float;
+
+  in vec3 vColor;
+  out vec4 fragColor;
+
+  uniform vec3 color;
+
+  void main() {
+      fragColor = vec4(vColor * color, 1.0);
+  }
+  </script>
+
+  <script id="vertex-shader" type="x-shader/x-vertex">
+  #version 300 es
+  precision mediump float;
+
+
+  in vec4 aPosition;
+  in vec4 aColor;
+  in vec3 aNormal;
+
+  out vec4 fColor;
+  out vec3 fNormal;
+
+  uniform mat4 modelView;
+  uniform mat4 projection;
+  uniform vec3 colorShift;
+
+  void main() {
+    gl_Position = projection * modelView * aPosition;
+    fColor = aColor * vec4(colorShift, 1.0);
+    fNormal = mat3(modelView) * aNormal;
+  }
+  </script>
+
+  <script id="fragment-shader" type="x-shader/x-fragment">
+  #version 300 es  
+  precision mediump float;
+
+  in vec4 fColor;
+  in vec3 fNormal;
+  out vec4 pColor;
+
+  uniform mat4 modelView;
+  uniform vec3 cameraPos;
+  uniform vec3 lightPos;
+  uniform vec3 sunColor;
+  uniform bool isLeftEye;
+
+  const float specular = 1.0;
+  const float diffuse = 0.8;
+  const float ambient_lighting = 0.75;
+  const float ambient_reflection = 0.3;
+  const float shininess = 4.0;
+
+  void main() {
+      vec3 N = normalize(fNormal);
+      vec3 L = lightPos;
+      vec3 V = cameraPos;
+      vec3 R = reflect(-L, N);
+
+      float ambient = ambient_reflection * ambient_lighting;
+      float diff = diffuse * max(dot(-L, N), 0.0);
+      float spec = specular * pow(max(dot(R, V), 0.0), shininess);
+
+      vec3 illumination = sunColor * (ambient + diff + spec);
+      vec3 finalColor = fColor.rgb * illumination;
+    
+      pColor = vec4(finalColor, 1.0);
+  }
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #gl-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #controls-overlay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(0, 0, 0, 0.7);
+      padding: 20px;
+      border-radius: 8px;
+      color: white;
+      z-index: 1000;
+      font-family: Arial, sans-serif;
+    }
+
+    .control-section {
+      margin-bottom: 20px;
+    }
+
+    .slider-container {
+      margin: 10px 0;
+    }
+
+    .slider-container label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .slider-container input[type="range"] {
+      width: 200px;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    .slider-value {
+      display: inline-block;
+      min-width: 40px;
+      font-size: 14px;
+    }
+
+    h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      font-weight: bold;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding-bottom: 5px;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="gl-canvas"></canvas>
+  <div id="controls-overlay">
+    <div class="control-section">
+      <h3>3D Effect</h3>
+      <div class="slider-container">
+        <label for="ipd-control">Eye Separation (IPD)</label>
+        <input type="range" id="ipd-control" min="0" max="0.3" step="0.001" value="0.00">
+        <span class="slider-value" id="ipd-control-value">0.0</span>
+      </div>
+    </div>
+    <div class="control-section">
+      <h3>Mountain Controls</h3>
+      <div class="slider-container">
+        <label for="mountain-speed">Mountain Scroll Speed</label>
+        <input type="range" id="mountain-speed" min="0" max="10" step="0.1" value="1.5">
+        <span class="slider-value" id="mountain-speed-value">1.5x</span>
+      </div>
+    </div>
+    <div class="control-section">
+      <h3>Sun Controls</h3>
+      <div class="color-picker-container">
+        <label for="sun-color">Sun Color</label>
+        <input type="color" id="sun-color" value="#ffffff">
+        <div class="color-picker-preview" id="sun-color-preview"></div>
+      </div>
+    </div>
+    <div class="control-section">
+      <h3>Body Controls</h3>
+      <div class="slider-container">
+        <label for="body-yaw">Body Yaw</label>
+        <input type="range" id="body-yaw" min="-180" max="180" step="1" value="0">
+        <span class="slider-value" id="body-yaw-value">0°</span>
+      </div>
+      <div class="slider-container">
+        <label for="body-pitch">Body Pitch</label>
+        <input type="range" id="body-pitch" min="-180" max="180" step="1" value="0">
+        <span class="slider-value" id="body-pitch-value">0°</span>
+      </div>
+      <div class="slider-container">
+        <label for="body-roll">Body Roll</label>
+        <input type="range" id="body-roll" min="-180" max="180" step="1" value="0">
+        <span class="slider-value" id="body-roll-value">0°</span>
+      </div>
+    </div>
+
+    <div class="control-section">
+      <h3>Flaps Controls</h3>
+      <div class="slider-container">
+        <label for="wing-flaps">Wing Flaps Angle</label>
+        <input type="range" id="wing-flaps" min="-45" max="45" step="1" value="0">
+        <span class="slider-value" id="wing-flaps-value">0°</span>
+      </div>
+    </div>
+
+    <div class="control-section">
+      <h3>Stabilizer Controls</h3>
+      <div class="slider-container">
+        <label for="vertical-stabilizers">Vertical Stabilizers Angle</label>
+        <input type="range" id="vertical-stabilizers" min="-45" max="45" step="1" value="0">
+        <span class="slider-value" id="vertical-stabilizers-value">0°</span>
+      </div>
+      <div class="slider-container">
+        <label for="horizontal-stabilizers">Horizontal Stabilizers Angle</label>
+        <input type="range" id="horizontal-stabilizers" min="-45" max="45" step="1" value="0">
+        <span class="slider-value" id="horizontal-stabilizers-value">0°</span>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
