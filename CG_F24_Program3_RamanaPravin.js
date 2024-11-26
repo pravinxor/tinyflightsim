@@ -203,6 +203,29 @@ function indicesConcate(arrays, bumps) {
   return cum;
 }
 
+async function accessWebcam(video) {
+  return new Promise((resolve, reject) => {
+    const mediaConstraints = {
+      audio: false,
+      video: {
+        width: 800,
+        height: 800
+      }
+    };
+
+    navigator.mediaDevices.getUserMedia(mediaConstraints)
+      .then(mediaStream => {
+        video.srcObject = mediaStream;
+        video.setAttribute('playsinline', true);
+        video.onloadedmetadata = () => {
+          video.play();
+          resolve(video);
+        }
+      })
+      .catch(reject);
+  });
+}
+
 const Models = {
   MountainMesh: class {
     generateHeight(x, troughWidth, peakHeight) {
@@ -313,24 +336,24 @@ const Models = {
     constructor(gl, program, radius = 1.0, segments = 32, startAngle = 0, endAngle = 2 * Math.PI) {
       const vertices = [];
       const colors = [];
+      const texCoords = [];
       const indices = [];
 
       const baseColor = [1.0, 1.0, 1.0, 1.0];
 
       const interpolateColor = (y) => {
         const t = (y + radius) / (2 * radius);
-
         const gradLevel = 10;
         return Mat.add(baseColor, [1.0, (t + gradLevel) / gradLevel, (t + gradLevel) / gradLevel, 1.0])
       };
 
       vertices.push(0, 0, 0, 1.0);
       colors.push(...interpolateColor(0));
+      texCoords.push(0.5, 0.5);
 
       for (let i = 0; i <= segments; i++) {
         const angleRange = endAngle - startAngle;
         const angleStep = angleRange / segments;
-
         const angle = startAngle + (i * angleStep);
 
         const x = radius * Math.cos(angle);
@@ -339,9 +362,12 @@ const Models = {
         vertices.push(x, 0, z, 1.0);
         colors.push(...interpolateColor(z));
 
-        if (i > 0) {
-          indices.push(0, i, i + 1);
-        }
+        // polar coordinates to uv coordinates
+        const u = Math.cos(angle) * 0.5 + 0.5;
+        const v = Math.sin(angle) * 0.5 + 0.5;
+        texCoords.push(u, v);
+
+        if (i > 0) indices.push(0, i, i + 1);
       }
 
       this.indicesLength = indices.length;
@@ -350,6 +376,7 @@ const Models = {
 
       loadGLBuffer(gl, program, "aColor", 4, gl.ARRAY_BUFFER, Float32Array.from(colors));
       loadGLBuffer(gl, program, "aPosition", 4, gl.ARRAY_BUFFER, Float32Array.from(vertices));
+      loadGLBuffer(gl, program, "aTexCoord", 2, gl.ARRAY_BUFFER, Float32Array.from(texCoords));
       loadGLBuffer(gl, program, "", null, gl.ELEMENT_ARRAY_BUFFER, Uint16Array.from(indices));
 
       gl.bindVertexArray(null);
@@ -635,11 +662,48 @@ const SunControls = {
 class Sun {
   constructor(gl) {
     this.program = compileProgram(gl, "sun-vertex-shader", "sun-fragment-shader");
+
     this.model = new Models.Circle(gl, this.program, 1, 64, 0, Math.PI);
+
     this.modelViewLoc = gl.getUniformLocation(this.program, "modelView");
     this.projectionLoc = gl.getUniformLocation(this.program, "projection");
     this.sunColorLoc = gl.getUniformLocation(this.program, "color");
 
+    this.video = document.getElementById('webcamVideo');
+
+    this.initWebcam();
+
+    this.webcamTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.webcamTexture);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // placeholder until the webcam feed is available
+    gl.texImage2D(
+      gl.TEXTURE_2D,        // target
+      0,                    // level
+      gl.RGBA,             // internal format
+      1,                    // width
+      1,                    // height
+      0,                    // border
+      gl.RGBA,             // format
+      gl.UNSIGNED_BYTE,    // type
+      new Uint8Array([255, 255, 255, 255])
+    );
+
+    this.webcamTextureLoc = gl.getUniformLocation(this.program, "webcamTexture");
+  }
+
+  async initWebcam() {
+    try {
+      await accessWebcam(this.video);
+    } catch (err) {
+      console.error("Error accessing webcam:", err);
+    }
   }
 
   draw(gl, modelView, projection, sunPos) {
@@ -649,6 +713,13 @@ class Sun {
     gl.uniformMatrix4fv(this.modelViewLoc, true, sunModelView.flat());
     gl.uniformMatrix4fv(this.projectionLoc, true, projection.flat());
     gl.uniform3fv(this.sunColorLoc, SunControls.color);
+
+    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.webcamTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
+      gl.uniform1i(this.webcamTextureLoc, 0);
+    }
 
     this.model.draw(gl);
   }
