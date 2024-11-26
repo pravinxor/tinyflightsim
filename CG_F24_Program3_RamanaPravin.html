@@ -11,7 +11,11 @@
 
   in vec4 aPosition;
   in vec3 aColor;
+  in vec2 aTexCoord;
+
   out vec3 vColor;
+  out vec2 vTexCoord;
+
 
   uniform mat4 modelView;
   uniform mat4 projection;
@@ -19,6 +23,7 @@
   void main() {
     gl_Position = projection * modelView * aPosition;
     vColor = aColor;
+    vTexCoord = 1.0 - aTexCoord;
   }
   </script>
 
@@ -27,12 +32,15 @@
   precision mediump float;
 
   in vec3 vColor;
+  in vec2 vTexCoord;
   out vec4 fragColor;
 
+  uniform sampler2D webcamTexture;
   uniform vec3 color;
 
   void main() {
-      fragColor = vec4(vColor * color, 1.0);
+    vec4 texColor = texture(webcamTexture, vTexCoord);
+    fragColor = texColor * vec4(color, 1.0);
   }
   </script>
 
@@ -160,6 +168,7 @@
 
 <body>
   <canvas id="gl-canvas"></canvas>
+  <video id="webcamVideo" style="display: none;" autoplay playsinline></video>
   <div id="controls-overlay">
     <div class="control-section">
       <h3>3D Effect</h3>
